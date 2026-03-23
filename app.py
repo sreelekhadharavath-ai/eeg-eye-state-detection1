@@ -3,6 +3,8 @@ import pandas as pd
 import joblib
 import numpy as np
 import time
+import os
+from sklearn.datasets import fetch_openml
 
 # ==========================================
 # 1. UI Design & Page Configuration
@@ -34,6 +36,28 @@ def add_engineered_features(data):
     features['max_amp'] = features[channel_cols].max(axis=1)
     features['min_amp'] = features[channel_cols].min(axis=1)
     return features
+
+# ==========================================
+# 3a. Auto-Downloader for the Dataset
+# ==========================================
+def download_dataset_if_missing():
+    if not os.path.exists("eeg_data.csv"):
+        with st.spinner("Dataset missing! Downloading EEG Eye State data from OpenML (15,000 records)..."):
+            try:
+                # Fetch dataset from OpenML (ID 1471)
+                eeg = fetch_openml('eeg-eye-state', version=1, as_frame=True, parser='auto')
+                df = eeg.frame
+                target_col_original = eeg.target_names[0]
+                mapping = {'1': 0, '2': 1}
+                df['eye_state'] = df[target_col_original].map(mapping)
+                df = df.drop(columns=[target_col_original])
+                df.to_csv('eeg_data.csv', index=False)
+                st.success("Dataset downloaded successfully!")
+                return df
+            except Exception as e:
+                st.error(f"Failed to download dataset: {e}")
+                st.stop()
+    return pd.read_csv("eeg_data.csv")
 
 # ==========================================
 # 3. Smart Output Conversion Logic
@@ -82,7 +106,7 @@ if mode == "Random Sample from Dataset":
     st.subheader("📊 Simulate Real Patient Data")
     st.write("Extracts a random 14-channel EEG reading from the dataset to simulate a real-time hospital scan.")
     try:
-        df = pd.read_csv("eeg_data.csv")
+        df = download_dataset_if_missing()
         features = df.drop(columns=['eye_state'])
         target = df['eye_state']
         
@@ -108,7 +132,7 @@ elif mode == "Manual Entry":
         submitted = st.form_submit_button("Predict Cognitive State", type="primary")
         if submitted:
             try:
-                df_header = pd.read_csv("eeg_data.csv", nrows=0)
+                df_header = download_dataset_if_missing().iloc[:0]
                 feature_cols = df_header.columns[:-1]
             except:
                 feature_cols = [f"V{i}" for i in range(1, 15)]
